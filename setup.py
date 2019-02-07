@@ -1,4 +1,5 @@
 from os import path
+
 from setuptools import find_packages, setup
 from setuptools.command.build_ext import build_ext as _build_ext
 
@@ -20,7 +21,7 @@ class build_ext(_build_ext):
 
 setup(
     name='featuretools',
-    version='0.5.1',
+    version='0.6.0',
     packages=find_packages(),
     description='a framework for automated feature engineering',
     url='http://featuretools.com',

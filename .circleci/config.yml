@@ -5,10 +5,11 @@ jobs:
     docker:
         - image: circleci/python:2.7
     steps:
+      - run: sudo apt update && sudo apt install -y graphviz
       - checkout
       - run: virtualenv venv
-      - run: source venv/bin/activate && pip install numpy==1.15.4
-      - run: source venv/bin/activate && make installdeps lint
+      - run: source venv/bin/activate && make installdeps
+      - run: source venv/bin/activate && make lint
       - run: source venv/bin/activate && make test
 
   "python-3.5":
@@ -16,9 +17,11 @@ jobs:
     docker:
         - image: circleci/python:3.5
     steps:
+      - run: sudo apt update && sudo apt install -y graphviz
       - checkout
       - run: virtualenv venv
-      - run: source venv/bin/activate && make installdeps lint
+      - run: source venv/bin/activate && make installdeps
+      - run: source venv/bin/activate && make lint
       - run: source venv/bin/activate && make test
 
   "python-3.6":
@@ -26,10 +29,11 @@ jobs:
     docker:
         - image: circleci/python:3.6
     steps:
-      - run: sudo apt update && sudo apt install pandoc -y
+      - run: sudo apt update && sudo apt install -y graphviz pandoc
       - checkout
       - run: virtualenv venv
-      - run: source venv/bin/activate && make installdeps lint
+      - run: source venv/bin/activate && make installdeps
+      - run: source venv/bin/activate && make lint
       - run: source venv/bin/activate && make -C docs/ -e "SPHINXOPTS=-W" clean html
       - run: |
           source venv/bin/activate
@@ -41,9 +45,11 @@ jobs:
     docker:
         - image: circleci/python:3.7
     steps:
+      - run: sudo apt update && sudo apt install -y graphviz
       - checkout
       - run: virtualenv venv
-      - run: source venv/bin/activate && make installdeps lint
+      - run: source venv/bin/activate && make installdeps
+      - run: source venv/bin/activate && make lint
       - run: source venv/bin/activate && make test
 
 workflows:

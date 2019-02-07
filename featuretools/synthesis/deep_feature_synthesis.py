@@ -4,17 +4,20 @@ from collections import defaultdict
 
 import featuretools.primitives.api as ftypes
 from featuretools import variable_types
-from featuretools.primitives.api import (
-    BinaryFeature,
-    Compare,
-    Discrete,
-    Equals,
+from featuretools.feature_base import (
+    AggregationFeature,
+    DirectFeature,
     IdentityFeature,
-    TimeSince
+    TransformFeature
 )
-from featuretools.primitives.base import AggregationPrimitive, DirectFeature
+from featuretools.primitives.api import Discrete
+from featuretools.primitives.base import (
+    AggregationPrimitive,
+    PrimitiveBase,
+    TransformPrimitive
+)
 from featuretools.utils import is_string
-from featuretools.variable_types import Boolean, Categorical, Numeric, Ordinal
+from featuretools.variable_types import Boolean, Numeric
 
 logger = logging.getLogger('featuretools')
 
@@ -63,7 +66,7 @@ class DeepFeatureSynthesis(object):
                 variables within each entity to blacklist when creating features.
                 If None, use all variables.
 
-            seed_features (list[:class:`.PrimitiveBase`], optional): List of manually
+            seed_features (list[:class:`.FeatureBase`], optional): List of manually
                 defined features to use.
 
             drop_contains (list[str], optional): Drop features
@@ -138,7 +141,10 @@ class DeepFeatureSynthesis(object):
                                      "Call ft.primitives.list_primitives() to get",
                                      " a list of available primitives")
                 a = agg_prim_dict[a.lower()]
-
+            a = handle_primitive(a)
+            if not isinstance(a, AggregationPrimitive):
+                raise ValueError("Primitive {} in agg_primitives is not an "
+                                 "aggregation primitive".format(type(a)))
             self.agg_primitives.append(a)
 
         if trans_primitives is None:
@@ -154,7 +160,10 @@ class DeepFeatureSynthesis(object):
                                      "Call ft.primitives.list_primitives() to get",
                                      " a list of available primitives")
                 t = trans_prim_dict[t.lower()]
-
+            t = handle_primitive(t)
+            if not isinstance(t, TransformPrimitive):
+                raise ValueError("Primitive {} in trans_primitives is not a "
+                                 "transform primitive".format(type(t)))
             self.trans_primitives.append(t)
 
         if where_primitives is None:
@@ -168,7 +177,7 @@ class DeepFeatureSynthesis(object):
                                      "Call ft.primitives.list_primitives() to get",
                                      " a list of available primitives")
                 p = prim_obj
-
+            p = handle_primitive(p)
             self.where_primitives.append(p)
 
         self.seed_features = seed_features or []
@@ -176,14 +185,14 @@ class DeepFeatureSynthesis(object):
         self.drop_contains = drop_contains or []
         self.where_stacking_limit = where_stacking_limit
 
-    def build_features(self, variable_types=None, verbose=False):
+    def build_features(self, return_variable_types=None, verbose=False):
         """Automatically builds feature definitions for target
             entity using Deep Feature Synthesis algorithm
 
         Args:
-            variable_types (list[Variable] or str, optional): Types of
+            return_variable_types (list[Variable] or str, optional): Types of
                 variables to return. If None, default to
-                Numeric, Categorical, Ordinal, and Boolean. If given as
+                Numeric, Discrete, and Boolean. If given as
                 the string 'all', use all available variable types.
 
             verbose (bool, optional): If True, print progress.
@@ -199,38 +208,19 @@ class DeepFeatureSynthesis(object):
                 all_features[e.id] = {}
 
         self.where_clauses = defaultdict(set)
+
+        if return_variable_types is None:
+            return_variable_types = [Numeric, Discrete, Boolean]
+        elif return_variable_types == 'all':
+            pass
+        else:
+            msg = "return_variable_types must be a list, or 'all'"
+            assert isinstance(return_variable_types, list), msg
+
         self._run_dfs(self.es[self.target_entity_id], [],
                       all_features, max_depth=self.max_depth)
 
         new_features = list(all_features[self.target_entity_id].values())
-
-        if variable_types is None:
-            variable_types = [Numeric,
-                              Discrete,
-                              Boolean]
-        elif variable_types == 'all':
-            variable_types = None
-        else:
-            msg = "variable_types must be a list, or 'all'"
-            assert isinstance(variable_types, list), msg
-
-        if variable_types is not None:
-            new_features = [f for f in new_features
-                            if any(issubclass(f.variable_type, vt) for vt in variable_types)]
-
-        def check_secondary_index(f):
-            secondary_time_index = self.es[self.target_entity_id].secondary_time_index
-            for s_time_index, exclude in secondary_time_index.items():
-                if isinstance(f, IdentityFeature) and f.variable.id in exclude:
-                    return False
-                elif isinstance(f, (BinaryFeature, Compare)):
-                    if (not check_secondary_index(f.left) or
-                            not check_secondary_index(f.right)):
-                        return False
-                if isinstance(f, TimeSince) and not check_secondary_index(f.base_features[0]):
-                    return False
-
-            return True
 
         def filt(f):
             # remove identity features of the ID field of the target entity
@@ -239,12 +229,14 @@ class DeepFeatureSynthesis(object):
                     f.variable.id == self.es[self.target_entity_id].index):
                 return False
 
-            if (isinstance(f, (IdentityFeature, BinaryFeature, Compare, TimeSince)) and
-                    not check_secondary_index(f)):
-
-                return False
-
             return True
+
+        # filter out features with undesired return types
+        if return_variable_types != 'all':
+            new_features = [
+                f for f in new_features
+                if any(issubclass(
+                    f.variable_type, vt) for vt in return_variable_types)]
 
         new_features = list(filter(filt, new_features))
 
@@ -383,11 +375,12 @@ class DeepFeatureSynthesis(object):
         for r in forward:
             if self.allowed_paths and tuple(entity_path + [r.parent_entity.id]) not in self.allowed_paths:
                 continue
-            self._build_forward_features(all_features=all_features,
-                                         parent_entity=r.parent_entity,
-                                         child_entity=r.child_entity,
-                                         relationship=r,
-                                         max_depth=max_depth)
+            self._build_forward_features(
+                all_features=all_features,
+                parent_entity=r.parent_entity,
+                child_entity=r.child_entity,
+                relationship=r,
+                max_depth=max_depth)
 
         # now that all  features are added, build where clauses
         self._build_where_clauses(all_features, entity)
@@ -396,7 +389,7 @@ class DeepFeatureSynthesis(object):
         """Adds new feature to the dict
 
         Args:
-            new_feature (:class:`.PrimitiveBase`): New feature being
+            new_feature (:class:`.FeatureBase`): New feature being
                 checked.
             all_features (dict[Entity.id -> dict[str -> BaseFeature]]):
                 Dict containing a dict for each entity. Each nested dict
@@ -470,7 +463,7 @@ class DeepFeatureSynthesis(object):
                 continue
 
             for val in variable.interesting_values:
-                self.where_clauses[entity.id].add(Equals(feat, val))
+                self.where_clauses[entity.id].add(feat == val)
 
     def _build_transform_features(self, all_features, entity, max_depth=0):
         """Creates trans_features for all the variables in an entity
@@ -499,19 +492,18 @@ class DeepFeatureSynthesis(object):
 
             features = self._features_by_type(all_features=all_features,
                                               entity=entity,
-                                              variable_type=set(input_types),
-                                              max_depth=new_max_depth)
+                                              max_depth=new_max_depth,
+                                              variable_type=set(input_types))
 
             matching_inputs = match(input_types, features,
                                     commutative=trans_prim.commutative)
 
             for matching_input in matching_inputs:
-                new_f = trans_prim(*matching_input)
-                if new_f.expanding:
-                    continue
-
-                self._handle_new_feature(all_features=all_features,
-                                         new_feature=new_f)
+                if all(bf.number_output_features == 1 for bf in matching_input):
+                    new_f = TransformFeature(matching_input,
+                                             primitive=trans_prim)
+                    self._handle_new_feature(all_features=all_features,
+                                             new_feature=new_f)
 
     def _build_forward_features(self, all_features, parent_entity,
                                 child_entity, relationship, max_depth=0):
@@ -519,31 +511,27 @@ class DeepFeatureSynthesis(object):
         if max_depth is not None and max_depth < 0:
             return
 
-        features = self._features_by_type(all_features=all_features,
-                                          entity=parent_entity,
-                                          variable_type=[Numeric,
-                                                         Categorical,
-                                                         Ordinal],
-                                          max_depth=max_depth)
+        features = self._features_by_type(
+            all_features=all_features,
+            entity=parent_entity,
+            max_depth=max_depth,
+            variable_type=variable_types.PandasTypes._all)
 
         for f in features:
             if self._feature_in_relationship_path([relationship], f):
                 continue
 
             # limits allowing direct features of agg_feats with where clauses
-            if isinstance(f, AggregationPrimitive):
-                deep_base_features = [f] + f.get_deep_dependencies()
+            if isinstance(f, AggregationFeature):
+                deep_base_features = [f] + f.get_dependencies(deep=True)
                 for feat in deep_base_features:
-                    if isinstance(feat, AggregationPrimitive) and feat.where is not None:
+                    if isinstance(feat, AggregationFeature) and feat.where is not None:
                         continue
 
             new_f = DirectFeature(f, child_entity)
 
-            if f.expanding:
-                continue
-            else:
-                self._handle_new_feature(all_features=all_features,
-                                         new_feature=new_f)
+            self._handle_new_feature(all_features=all_features,
+                                     new_feature=new_f)
 
     def _build_agg_features(self, all_features,
                             parent_entity, child_entity, max_depth=0):
@@ -562,8 +550,8 @@ class DeepFeatureSynthesis(object):
 
             features = self._features_by_type(all_features=all_features,
                                               entity=child_entity,
-                                              variable_type=set(input_types),
-                                              max_depth=new_max_depth)
+                                              max_depth=new_max_depth,
+                                              variable_type=set(input_types))
 
             # remove features in relationship path
             relationship_path = self.es.find_backward_path(parent_entity.id,
@@ -578,21 +566,24 @@ class DeepFeatureSynthesis(object):
             for matching_input in matching_inputs:
                 if not check_stacking(agg_prim, matching_input):
                     continue
-                new_f = agg_prim(matching_input,
-                                 parent_entity=parent_entity)
+                new_f = AggregationFeature(matching_input,
+                                           parent_entity=parent_entity,
+                                           primitive=agg_prim)
                 self._handle_new_feature(new_f, all_features)
 
                 # Obey allow where
                 if not agg_prim.allow_where:
                     continue
 
-                # limits the stacking of where features
+                # limit the stacking of where features
+                # count up the the number of where features
+                # in this feature and its dependencies
                 feat_wheres = []
                 for f in matching_input:
-                    if f.where is not None:
+                    if isinstance(f, AggregationFeature) and f.where is not None:
                         feat_wheres.append(f)
-                    for feat in f.get_deep_dependencies():
-                        if (isinstance(feat, AggregationPrimitive) and
+                    for feat in f.get_dependencies(deep=True):
+                        if (isinstance(feat, AggregationFeature) and
                                 feat.where is not None):
                             feat_wheres.append(feat)
 
@@ -600,20 +591,26 @@ class DeepFeatureSynthesis(object):
                     continue
 
                 # limits the aggregation feature by the given allowed feature types.
-                if not any([issubclass(agg_prim, feature_type) for feature_type in self.where_primitives]):
+                if not any([issubclass(type(agg_prim), type(primitive))
+                            for primitive in self.where_primitives]):
                     continue
 
                 for where in wheres:
                     # limits the where feats so they are different than base feats
-                    if any([base_feat.hash() in new_f.base_hashes for base_feat in where.base_features]):
+                    base_hashes = [f.hash() for f in new_f.base_features]
+                    if any([base_feat.hash() in base_hashes for base_feat in where.base_features]):
                         continue
 
-                    new_f = agg_prim(matching_input,
-                                     parent_entity=parent_entity,
-                                     where=where)
+                    new_f = AggregationFeature(matching_input,
+                                               parent_entity=parent_entity,
+                                               where=where,
+                                               primitive=agg_prim)
+
                     self._handle_new_feature(new_f, all_features)
 
-    def _features_by_type(self, all_features, entity, variable_type, max_depth):
+    def _features_by_type(self, all_features, entity, max_depth,
+                          variable_type=None):
+
         selected_features = []
 
         if max_depth is not None and max_depth < 0:
@@ -656,11 +653,11 @@ class DeepFeatureSynthesis(object):
         # if base_feat is a direct_feature of an agg_primitive
         # determine aggfeat's hlevel
         # return max hlevel
-        deps = [f] + f.get_deep_dependencies()
+        deps = [f] + f.get_dependencies(deep=True)
         hlevel = 0
         for d in deps:
             if isinstance(d, DirectFeature) and \
-                    isinstance(d.base_features[0], AggregationPrimitive):
+                    isinstance(d.base_features[0], AggregationFeature):
 
                 assert d.parent_entity.id == d.base_features[0].entity.id
                 path, new_hlevel = self.es.find_path(self.target_entity_id,
@@ -670,39 +667,40 @@ class DeepFeatureSynthesis(object):
         return hlevel
 
 
-def check_stacking(primitive, input_types):
-    """checks if features in input_types can be used with supplied primitive
+def check_stacking(primitive, inputs):
+    """checks if features in inputs can be used with supplied primitive
        using the stacking rules"""
     if primitive.stack_on_self is False:
-        for f in input_types:
-            if type(f) == primitive:
+        for f in inputs:
+            if isinstance(f.primitive, primitive.__class__):
                 return False
 
     if primitive.stack_on_exclude is not None:
-        for f in input_types:
-            if type(f) in primitive.stack_on_exclude:
+        for f in inputs:
+            if isinstance(f.primitive, tuple(primitive.stack_on_exclude)):
                 return False
 
-    for f in input_types:
-        if f.expanding:
+    # R TODO: handle this
+    for f in inputs:
+        if f.number_output_features > 1:
             return False
 
-    for f in input_types:
-        if f.base_of_exclude is not None:
+    for f in inputs:
+        if f.primitive.base_of_exclude is not None:
             if primitive in f.base_of_exclude:
                 return False
 
-    for f in input_types:
+    for f in inputs:
         if primitive.stack_on_self is True:
-            if type(f) == primitive:
+            if isinstance(f.primitive, primitive.__class__):
                 continue
         if primitive.stack_on is not None:
-            if type(f) in primitive.stack_on:
+            if isinstance(f.primitive, tuple(primitive.stack_on)):
                 continue
         else:
             continue
-        if f.base_of is not None:
-            if primitive in f.base_of:
+        if f.primitive.base_of is not None:
+            if primitive.__class__ in f.primitive.base_of:
                 continue
         else:
             continue
@@ -750,3 +748,10 @@ def match(input_types, features, replace=False, commutative=False):
         return set([tuple(sorted(s, key=lambda x: x.get_name().lower())) for s in matching_inputs])
 
     return set([tuple(s) for s in matching_inputs])
+
+
+def handle_primitive(primitive):
+    if not isinstance(primitive, PrimitiveBase):
+        primitive = primitive()
+    assert isinstance(primitive, PrimitiveBase), "must be a primitive"
+    return primitive
