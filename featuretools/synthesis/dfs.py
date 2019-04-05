@@ -1,4 +1,5 @@
 import pandas as pd
+import pkg_resources
 
 from .deep_feature_synthesis import DeepFeatureSynthesis
 
@@ -14,6 +15,7 @@ def dfs(entities=None,
         instance_ids=None,
         agg_primitives=None,
         trans_primitives=None,
+        groupby_trans_primitives=None,
         allowed_paths=None,
         max_depth=2,
         ignore_entities=None,
@@ -73,6 +75,9 @@ def dfs(entities=None,
 
                 Default: ["day", "year", "month", "weekday", "haversine", "num_words", "num_characters"]
 
+        groupby_trans_primitives (list[str or :class:`.primitives.TransformPrimitive`], optional):
+            list of Transform primitives to make GroupByTransformFeatures with
+
         allowed_paths (list[list[str]]): Allowed entity paths on which to make
             features.
 
@@ -124,7 +129,7 @@ def dfs(entities=None,
         n_jobs (int, optional): number of parallel processes to use when
             calculating feature matrix
 
-        chunk_size (int or float or None or "cutoff time", optionsal): Number
+        chunk_size (int or float or None or "cutoff time", optional): Number
             of rows of output feature matrix to calculate at time. If passed an
             integer greater than 0, will try to use that many rows per chunk.
             If passed a float value between 0 and 1 sets the chunk size to that
@@ -174,9 +179,19 @@ def dfs(entities=None,
     if not isinstance(entityset, EntitySet):
         entityset = EntitySet("dfs", entities, relationships)
 
+    # Call functions registered by other libraries with DFS arguments
+    for entry_point in pkg_resources.iter_entry_points('featuretools_dfs'):
+        try:
+            loaded = entry_point.load()
+            if hasattr(loaded, 'dfs'):
+                loaded.dfs(locals())
+        except Exception:
+            pass
+
     dfs_object = DeepFeatureSynthesis(target_entity, entityset,
                                       agg_primitives=agg_primitives,
                                       trans_primitives=trans_primitives,
+                                      groupby_trans_primitives=groupby_trans_primitives,
                                       max_depth=max_depth,
                                       where_primitives=where_primitives,
                                       allowed_paths=allowed_paths,

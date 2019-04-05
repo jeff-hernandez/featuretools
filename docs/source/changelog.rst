@@ -2,6 +2,86 @@
 
 Changelog
 ---------
+**v0.7.0** Mar 29, 2019
+    * Improve Entity Set Serialization (:pr:`361`)
+    * Support calling a primitive instance's function directly (:pr:`461`, :pr:`468`)
+    * Support other libraries extending featuretools functionality via entrypoints (:pr:`452`)
+    * Remove featuretools install command (:pr:`475`)
+    * Add GroupByTransformFeature (:pr:`455`, :pr:`472`, :pr:`476`)
+    * Update Haversine Primitive (:pr:`435`, :pr:`462`)
+    * Add commutative argument to SubtractNumeric and DivideNumeric primitives (:pr:`457`)
+    * Add FilePath variable_type (:pr:`470`)
+    * Add PhoneNumber, DateOfBirth, URL variable types (:pr:`447`)
+    * Generalize infer_variable_type, convert_variable_data and convert_all_variable_data methods (:pr:`423`)
+    * Documentation updates (:pr:`438`, :pr:`446`, :pr:`458`, :pr:`469`)
+    * Testing updates (:pr:`440`, :pr:`444`, :pr:`445`, :pr:`459`)
+
+    Thanks to the following people for contributing to this release: :user:`bukosabino`, :user:`CharlesBradshaw`, :user:`ColCarroll`, :user:`glentennis`, :user:`grayskripko`, :user:`gsheni`, :user:`jeff-hernandez`, :user:`jrkinley`, :user:`kmax12`, :user:`RogerTangos`, :user:`rwedge`
+
+**Breaking Changes**
+
+* ``ft.dfs`` now has a ``groupby_trans_primitives`` parameter that DFS uses to automatically construct features that group by an ID column and then apply a transform primitive to search group. This change applies to the following primitives: ``CumSum``, ``CumCount``, ``CumMean``, ``CumMin``, and ``CumMax``.
+
+    Previous behavior
+
+    .. code-block:: python
+
+        ft.dfs(entityset=es,
+               target_entity='customers',
+               trans_primitives=["cum_mean"])
+
+    New behavior
+
+    .. code-block:: python
+
+        ft.dfs(entityset=es,
+               target_entity='customers',
+               groupby_trans_primitives=["cum_mean"])
+
+* Related to the above change, cumulative transform features are now defined using a new feature class, ``GroupByTransformFeature``.
+
+    Previous behavior
+
+    .. code-block:: python
+
+        ft.Feature([base_feature, groupby_feature], primitive=CumulativePrimitive)
+
+
+    New behavior
+
+    .. code-block:: python
+
+        ft.Feature(base_feature, groupby=groupby_feature, primitive=CumulativePrimitive)
+
+
+**v0.6.1** Feb 15, 2019
+    * Cumulative primitives (:pr:`410`)
+    * Entity.query_by_values now preserves row order of underlying data (:pr:`428`)
+    * Implementing Country Code and Sub Region Codes as variable types (:pr:`430`)
+    * Added IPAddress and EmailAddress variable types (:pr:`426`)
+    * Install data and dependencies (:pr:`403`)
+    * Add TimeSinceFirst, fix TimeSinceLast (:pr:`388`)
+    * Allow user to pass in desired feature return types (:pr:`372`)
+    * Add new configuration object (:pr:`401`)
+    * Replace NUnique get_function (:pr:`434`)
+    * _calculate_idenity_features now only returns the features asked for, instead of the entire entity (:pr:`429`)
+    * Primitive function name uniqueness (:pr:`424`)
+    * Update NumCharacters and NumWords primitives (:pr:`419`)
+    * Removed Variable.dtype (:pr:`416`, :pr:`433`)
+    * Change to zipcode rep, str for pandas (:pr:`418`)
+    * Remove pandas version upper bound (:pr:`408`)
+    * Make S3 dependencies optional (:pr:`404`)
+    * Check that agg_primitives and trans_primitives are right primitive type (:pr:`397`)
+    * Mean primitive changes (:pr:`395`)
+    * Fix transform stacking on multi-output aggregation (:pr:`394`)
+    * Fix list_primitives (:pr:`391`)
+    * Handle graphviz dependency (:pr:`389`, :pr:`396`, :pr:`398`)
+    * Testing updates (:pr:`402`, :pr:`417`, :pr:`433`)
+    * Documentation updates (:pr:`400`, :pr:`409`, :pr:`415`, :pr:`417`, :pr:`420`, :pr:`421`, :pr:`422`, :pr:`431`)
+
+
+    Thanks to the following people for contributing to this release:  :user:`CharlesBradshaw`, :user:`csala`, :user:`floscha`, :user:`gsheni`, :user:`jxwolstenholme`, :user:`kmax12`, :user:`RogerTangos`, :user:`rwedge`
+
 **v0.6.0** Jan 30, 2018
     * Primitive refactor (:pr:`364`)
     * Mean ignore NaNs (:pr:`379`)
