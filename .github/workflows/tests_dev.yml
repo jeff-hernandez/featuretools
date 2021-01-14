@@ -21,8 +21,7 @@ jobs:
           patterns = list(map(compile, regex))
           ref = basename("${{ github.event.ref }}")
           is_dev = not any(pattern.match(ref) for pattern in patterns)
-          pr
-          int('::set-output name=is_dev::' + str(is_dev))
+          print('::set-output name=is_dev::' + str(is_dev))
       # - if: ${{ steps.branch.outputs.is_dev == 'True' }}
       #   name: Get pull request number
       #   id: pull_request
