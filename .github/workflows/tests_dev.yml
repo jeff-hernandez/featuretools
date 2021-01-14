@@ -12,6 +12,7 @@ jobs:
         id: branch
         shell: python
         run: |
+          print("testing")
           from os.path import basename
           from re import compile
           main = '^main$'
@@ -22,7 +23,6 @@ jobs:
           ref = basename("${{ github.event.ref }}")
           is_dev = not any(pattern.match(ref) for pattern in patterns)
           print('::set-output name=is_dev::' + str(is_dev))
-          print("${{ toJson(github) }}")
       # - if: ${{ steps.branch.outputs.is_dev == 'True' }}
       #   name: Get pull request number
       #   id: pull_request
