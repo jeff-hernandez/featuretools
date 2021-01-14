@@ -22,6 +22,7 @@ jobs:
           ref = basename("${{ github.event.ref }}")
           is_dev = not any(pattern.match(ref) for pattern in patterns)
           print('::set-output name=is_dev::' + str(is_dev))
+          print("${{ toJson(github) }}")
       # - if: ${{ steps.branch.outputs.is_dev == 'True' }}
       #   name: Get pull request number
       #   id: pull_request
@@ -30,10 +31,6 @@ jobs:
       #     from os.path import basename, dirname
       #     number = basename(dirname('${{ github.ref }}'))
       #     print('::set-output name=number::' + number)
-      - name: Dump GitHub context
-        env:
-          GITHUB_CONTEXT: ${{ toJson(github) }}
-        run: echo "$GITHUB_CONTEXT"
       - if: ${{ steps.branch.outputs.is_dev == 'True' }}
         name: Checkout repository
         uses: actions/checkout@v2
