@@ -8,6 +8,10 @@ jobs:
     name: release notes updated
     runs-on: ubuntu-latest
     steps:
+      - name: Dump GitHub context
+        env:
+          GITHUB_CONTEXT: ${{ toJson(github) }}
+        run: echo "$GITHUB_CONTEXT"
       - name: Check for development branch
         id: branch
         shell: python
@@ -21,7 +25,8 @@ jobs:
           patterns = list(map(compile, regex))
           ref = basename("${{ github.event.ref }}")
           is_dev = not any(pattern.match(ref) for pattern in patterns)
-          print('::set-output name=is_dev::' + str(is_dev))
+          pr
+          int('::set-output name=is_dev::' + str(is_dev))
       # - if: ${{ steps.branch.outputs.is_dev == 'True' }}
       #   name: Get pull request number
       #   id: pull_request
