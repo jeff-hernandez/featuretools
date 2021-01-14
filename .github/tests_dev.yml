@@ -1,0 +1,41 @@
+on:
+  pull_request_target:
+    types: [opened, synchronize]
+
+name: Tests (Dev)
+jobs:
+  release_notes_updated:
+    name: release notes updated
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for development branch
+        id: branch
+        shell: python
+        run: |
+          from os.path import basename
+          from re import compile
+          main = '^main$'
+          release = '^v\d+\.\d+\.\d+$'
+          dep_update = '^dep-update-[a-f0-9]{7}$'
+          regex = main, release, dep_update
+          patterns = list(map(compile, regex))
+          ref = basename("${{ github.event.ref }}")
+          is_dev = not any(pattern.match(ref) for pattern in patterns)
+          print('::set-output name=is_dev::' + str(is_dev))
+      - if: ${{ steps.branch.outputs.is_dev == 'True' }}
+        name: Get pull request number
+        id: pull_request
+        shell: python
+        run: |
+          from os.path import basename, dirname
+          number = basename(dirname('${{ github.ref }}'))
+          print('::set-output name=number::' + number)
+      - if: ${{ steps.branch.outputs.is_dev == 'True' }}
+        name: Checkout repository
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+      - if: ${{ steps.branch.outputs.is_dev == 'True' }}
+        name: Check if release notes were updated
+        run: cat docs/source/release_notes.rst | grep ":pr:\`${{ steps.pull_request.outputs.number }}\`"
